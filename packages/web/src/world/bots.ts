@@ -24,8 +24,10 @@ export interface Bot {
   person: Person;
   /** Working at its station (vs rolling there or back). */
   working: boolean;
-  /** The job's result, once it's on its way back with it. */
+  /** The job's result, once it's on its way back with it (none when the job just stopped). */
   result: boolean | undefined;
+  /** Its job is over: on its way back, then off. */
+  leaving: boolean;
   done: boolean;
 }
 
@@ -50,19 +52,23 @@ export class Bots {
    */
   sync(agents: Iterable<{ agent: AgentState; from: Point }>, initial: boolean): void {
     const now = Date.now();
+    const running = new Set<string>();
     for (const { agent, from } of agents) {
       for (const job of agent.jobs ?? []) {
         const id = `job:${job.callId}`;
-        const bot = this.list.find((b) => b.id === id);
-        if (bot) {
-          if (job.endedAt !== undefined && bot.result === undefined) this.finish(bot, job.ok ?? false);
+        if (!runningJobs({ jobs: [job] }, now).length) {
+          const bot = this.list.find((b) => b.id === id && !b.leaving);
+          if (bot && job.endedAt !== undefined) this.finish(bot, job.ok);
           continue;
         }
-        if (this.seen.has(id) || !runningJobs({ jobs: [job] }, now).length) continue;
+        running.add(id);
+        if (this.seen.has(id)) continue;
         this.seen.add(id);
         this.spawn(id, agent, job, from, initial);
       }
     }
+    // Its job is gone without an end (its agent left, or we gave up on hearing back): it just leaves.
+    for (const b of this.list) if (!b.leaving && !running.has(b.id)) this.finish(b, undefined);
   }
 
   update(dtMs: number, now: number): void {
@@ -83,7 +89,7 @@ export class Bots {
   private spawn(id: string, agent: AgentState, job: Job, from: Point, initial: boolean): void {
     const room: SpotKind = isTestRun("Bash", job.summary) ? "lab" : "server";
     const person = new Person(id, { cast: "robot" }, from, () => this.host.office().passable);
-    const bot: Bot = { id, agentId: agent.id, sessionId: agent.sessionId, job, room, person, working: false, result: undefined, done: false };
+    const bot: Bot = { id, agentId: agent.id, sessionId: agent.sessionId, job, room, person, working: false, result: undefined, leaving: false, done: false };
     this.list.push(bot);
     const station = (): Destination | undefined => {
       const spot = this.host.allocator.reserve(id, room, person.tile);
@@ -101,9 +107,10 @@ export class Bots {
     ]);
   }
 
-  /** The job ended: roll back to the agent with the result, then off. */
-  private finish(bot: Bot, ok: boolean): void {
+  /** The job ended: roll back to the agent with the result (if there is one), then off. */
+  private finish(bot: Bot, ok: boolean | undefined): void {
     bot.result = ok;
+    bot.leaving = true;
     bot.working = false;
     this.host.allocator.release(bot.id);
     const label = bot.job.label ?? bot.job.summary.replace(/^\w+: /, "");
@@ -117,8 +124,9 @@ export class Bots {
           return near ? { tile: near, facing: "up", pose: "stand", run: true } : undefined;
         },
       },
-      { type: "do", fn: () => this.host.say(bot.id, ok ? `✓ ${label}` : `✗ ${label}`) },
-      { type: "hold", ms: 2200 },
+      ...(ok === undefined
+        ? []
+        : [{ type: "do" as const, fn: () => this.host.say(bot.id, ok ? `✓ ${label}` : `✗ ${label}`) }, { type: "hold" as const, ms: 2200 }]),
       { type: "do", fn: () => (bot.done = true) },
     ]);
   }

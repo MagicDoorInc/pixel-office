@@ -27,12 +27,15 @@ export type AgentStatus = "working" | "waiting" | "idle" | "ended";
 /** A command running in the background (see the `job.start` event). */
 export interface Job {
   callId: string;
+  /** The agent tool's own id for the command, once known (it stops the command by this id). */
+  taskId?: string;
   /** The command, summarized like a tool call ("Bash: pnpm test"). */
   summary: string;
   /** What it's for ("Run the test suite"), when the agent said. */
   label?: string;
   startedAt: number;
   endedAt?: number;
+  /** How it ended; unset when it just stopped with its session. */
   ok?: boolean;
 }
 

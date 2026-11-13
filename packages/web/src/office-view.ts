@@ -110,7 +110,7 @@ export class OfficeView {
       visiting.add(b.id);
       const owner = w.actors.get(b.agentId)?.agent;
       const what = b.job.label ?? b.job.summary.replace(/^\w+: /, "");
-      const ran = b.result === undefined ? ` · ${elapsed(Date.now() - b.job.startedAt)}` : "";
+      const ran = !b.leaving ? ` · ${elapsed(Date.now() - b.job.startedAt)}` : "";
       overlay.ensure({ ...visitorRecord(b.id, `🤖 ${what}${ran}`), ...(owner?.user ? { user: owner.user } : {}) }, { sessionColor: w.colorOf(b.sessionId) }, () => this.deps.onSelect(b.agentId));
       points.set(b.id, this.at(b.person.x, b.person.y, TAG_LIFT_BOT));
     }

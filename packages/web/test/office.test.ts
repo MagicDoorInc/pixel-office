@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { agentEventSchema, emptyState, reduceAll, type AgentEventInput } from "@pixel-office/protocol";
+import { agentEventSchema, emptyState, reduceAll, type AgentEventInput, type AgentState } from "@pixel-office/protocol";
+import { Bots } from "../src/world/bots.js";
 import { Allocator } from "../src/office/allocator.js";
 import { MIN_DWELL_MS, PlaceDebouncer, placeFor, SETTLE_MS } from "../src/office/director.js";
 import { MIN_ROOMS, WORKERS_PER_ROW, generateOffice, type OfficePlan } from "../src/office/generate.js";
@@ -285,5 +286,39 @@ describe("place debouncer", () => {
     const d = new PlaceDebouncer();
     d.decide(placeFor("thinking"), 0);
     expect(d.decide(placeFor("edit"), 10).pose).toBe("type");
+  });
+});
+
+describe("job robots", () => {
+  const office = generateOffice({ ...quiet, teams: [team("s1")] });
+  const ev = (e: AgentEventInput) => agentEventSchema.parse(e);
+  const base = { source: "claude", project: { path: "/a", name: "a" }, sessionId: "s1", agentId: "m" } as const;
+  const setup = () => {
+    const allocator = new Allocator(office);
+    const desk = allocator.seatFor({ id: "m", sessionId: "s1" })!;
+    const bots = new Bots({ office: () => office, allocator, agentTile: () => desk, say: () => {} });
+    const sync = (agents: AgentState[]) => bots.sync(agents.map((agent) => ({ agent, from: desk })), false);
+    const run = (ms: number) => { for (let i = 0; i < ms / 50; i++) bots.update(50, i * 50); };
+    return { bots, sync, run };
+  };
+  const t = Date.now();
+  const started = reduceAll(emptyState(), [ev({ ...base, ts: t, kind: "job.start", callId: "c1", taskId: "b1", summary: "Bash: pnpm dev" })]);
+
+  it("leaves once the agent stops its command", () => {
+    const { bots, sync, run } = setup();
+    sync([started.agents.m!]);
+    expect(bots.list).toHaveLength(1);
+    const stopped = reduceAll(started, [ev({ ...base, ts: t + 1, kind: "job.end", taskId: "b1", ok: true })]);
+    sync([stopped.agents.m!]);
+    run(60_000);
+    expect(bots.list).toHaveLength(0);
+  });
+
+  it("leaves when its agent leaves the office without word of the job", () => {
+    const { bots, sync, run } = setup();
+    sync([started.agents.m!]);
+    sync([]);
+    run(60_000);
+    expect(bots.list).toHaveLength(0);
   });
 });

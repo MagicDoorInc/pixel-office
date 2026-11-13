@@ -102,19 +102,26 @@ export const agentEventSchema = z.discriminatedUnion("kind", [
   /**
    * A command the agent started in the background (a build, a test run…): it
    * keeps running after the tool call returns, while the agent waits or does
-   * other work. `callId` is the tool call that started it.
+   * other work. `callId` is the tool call that started it. Sent again once the
+   * call returns, with the `taskId` the agent tool gave the command (that is
+   * how the agent refers to it when it stops it).
    */
   z.object({
     ...base,
     kind: z.literal("job.start"),
     callId: id,
+    taskId: id.optional(),
     /** The command, summarized like a tool call ("Bash: pnpm test"). */
     summary: text,
     /** What it's for, in a few words ("Run the test suite"), when the agent said. */
     label: text.optional(),
   }),
-  /** A background command finished (`ok`: it succeeded; false: it failed or was stopped). */
-  z.object({ ...base, kind: z.literal("job.end"), callId: id, ok: z.boolean() }),
+  /**
+   * A background command finished (`ok`: it succeeded; false: it failed or was
+   * killed). Named by the tool call that started it, or by its task id when the
+   * agent stopped it itself.
+   */
+  z.object({ ...base, kind: z.literal("job.end"), callId: id.optional(), taskId: id.optional(), ok: z.boolean() }),
 ]);
 
 export type AgentEvent = z.output<typeof agentEventSchema>;

@@ -80,12 +80,7 @@ export function claudeToEvents(payload: unknown, now: number): AgentEvent[] {
         ...withDetail(detailTool(toolName, toolInput)),
       });
       // A command left running in the background: the office follows it until it finishes.
-      if (toolName === "Bash" && toolInput?.run_in_background === true) {
-        const label = str(toolInput, "description");
-        // The summary is the command itself (not the description), so a test run is recognised as one.
-        const { description: _, ...command } = toolInput;
-        out.push({ ...base, kind: "job.start", callId, summary: summarizeTool(toolName, command), ...(label ? { label } : {}) });
-      }
+      if (toolName === "Bash" && toolInput?.run_in_background === true) out.push(jobStart(base, callId, toolInput));
       if (toolName === "SendMessage") {
         const to = str(toolInput, "to") ?? str(toolInput, "recipient");
         const text = str(toolInput, "message") ?? str(toolInput, "content") ?? str(toolInput, "summary");
@@ -119,9 +114,19 @@ export function claudeToEvents(payload: unknown, now: number): AgentEvent[] {
       if (id) out.push({ ...base, kind: "todo", item: { id, text: str(payload, "task_subject") ?? "", status: "completed" } });
       break;
     }
-    case "PostToolUse":
+    case "PostToolUse": {
       if (callId) out.push({ ...base, kind: "tool.end", callId, ok: true });
+      const response = isObj(payload.tool_response) ? payload.tool_response : undefined;
+      // The background command is running: remember the id Claude Code gave it, which is how the agent stops it.
+      const taskId = str(response, "backgroundTaskId");
+      if (toolName === "Bash" && callId && toolInput && taskId) out.push(jobStart(base, callId, toolInput, taskId));
+      // The agent stopped one of its background commands. Claude Code reports no end for those.
+      if (toolName === "TaskStop" || toolName === "KillShell") {
+        const stopped = str(toolInput, "task_id") ?? str(toolInput, "shell_id");
+        if (stopped) out.push({ ...base, kind: "job.end", taskId: stopped, ok: true });
+      }
       break;
+    }
     case "PostToolUseFailure":
       if (callId) out.push({ ...base, kind: "tool.end", callId, ok: false });
       break;
@@ -191,3 +196,11 @@ function firstQuestion(input: Obj | undefined): string | undefined {
 }
 
 export const claudeAdapter: Adapter = { toEvents: claudeToEvents };
+
+/** A command left running in the background: the office follows it until it finishes. */
+function jobStart(base: Obj, callId: string, toolInput: Obj, taskId?: string): unknown {
+  const label = str(toolInput, "description");
+  // The summary is the command itself (not the description), so a test run is recognised as one.
+  const { description: _, ...command } = toolInput;
+  return { ...base, kind: "job.start", callId, ...(taskId ? { taskId } : {}), summary: summarizeTool("Bash", command), ...(label ? { label } : {}) };
+}

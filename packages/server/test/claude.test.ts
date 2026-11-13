@@ -31,6 +31,25 @@ describe("claude adapter", () => {
     ]);
   });
 
+  it("follows a background command the agent stops itself: its task id from the call's result, its end from TaskStop", () => {
+    const started = run({
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_use_id: "toolu_1",
+      tool_input: { command: "pnpm dev", description: "dev server", run_in_background: true },
+      tool_response: { stdout: "", backgroundTaskId: "bd802dtlj" },
+    });
+    expect(started.find((e) => e.kind === "job.start")).toMatchObject({ callId: "toolu_1", taskId: "bd802dtlj", label: "dev server" });
+
+    const plain = run({ hook_event_name: "PostToolUse", tool_name: "Bash", tool_use_id: "toolu_2", tool_input: { command: "ls" }, tool_response: { stdout: "a" } });
+    expect(plain.map((e) => e.kind)).toEqual(["tool.end"]);
+
+    for (const [tool, input] of [["TaskStop", { task_id: "bd802dtlj" }], ["KillShell", { shell_id: "bd802dtlj" }]] as const) {
+      const stopped = run({ hook_event_name: "PostToolUse", tool_name: tool, tool_use_id: "toolu_3", tool_input: input, tool_response: {} });
+      expect(stopped.find((e) => e.kind === "job.end")).toMatchObject({ taskId: "bd802dtlj", ok: true });
+    }
+  });
+
   it("maps SessionStart with identity and project", () => {
     const [e] = run({ hook_event_name: "SessionStart", source: "startup", model: "claude-opus-5" });
     expect(e).toMatchObject({

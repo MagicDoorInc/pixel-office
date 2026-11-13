@@ -50,6 +50,25 @@ describe("reduce", () => {
     expect(later.agents.a!.activity).toBe("idle");
   });
 
+  it("background jobs: one the agent stops itself ends by its task id; the rest end with their session", () => {
+    const s = reduceAll(emptyState(), [
+      ev({ kind: "job.start", agentId: "a", callId: "j1", summary: "Bash: pnpm dev" }),
+      ev({ kind: "job.start", agentId: "a", callId: "j1", taskId: "b1", summary: "Bash: pnpm dev" }),
+      ev({ kind: "session.start", agentId: "sub", parentAgentId: "a" }),
+      ev({ kind: "job.start", agentId: "sub", callId: "j2", summary: "Bash: pnpm build" }),
+      // Stopped by its task id, from another agent of the same session.
+      ev({ kind: "job.end", agentId: "sub", taskId: "b1", ok: true }),
+    ]);
+    expect(s.agents.a!.jobs).toEqual([expect.objectContaining({ callId: "j1", taskId: "b1", ok: true, endedAt: expect.any(Number) })]);
+    expect(s.agents.a!.jobs![0]!.startedAt).toBeLessThan(s.agents.a!.jobs![0]!.endedAt!);
+    expect(s.agents.a!.lastErrorAt).toBeUndefined();
+    expect(s.agents.sub!.jobs![0]!.endedAt).toBeUndefined();
+
+    const ended = reduceAll(s, [ev({ kind: "session.end", agentId: "a" })]);
+    expect(ended.agents.sub!.jobs![0]).toMatchObject({ endedAt: expect.any(Number) });
+    expect(ended.agents.sub!.jobs![0]!.ok).toBeUndefined();
+  });
+
   it("creates an agent on first event and tracks a prompt → tool → idle turn", () => {
     const s = reduceAll(emptyState(), [
       ev({ kind: "session.start", agentId: "a" }),

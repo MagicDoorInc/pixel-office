@@ -20,8 +20,8 @@ import {
 export function reduce(state: OfficeState, e: AgentEvent): OfficeState {
   // A job's end goes to the agent that started it (a sub-agent's jobs are reported by its session).
   if (e.kind === "job.end") {
-    const callId = e.callId;
-    const owns = (x: AgentState | undefined) => !!x?.jobs?.some((j) => j.callId === callId);
+    const end = e;
+    const owns = (x: AgentState | undefined) => !!x?.jobs?.some((j) => isJob(j, end));
     const owner = owns(state.agents[e.agentId]) ? undefined : Object.values(state.agents).find((x) => x.sessionId === e.sessionId && owns(x));
     if (owner) e = { ...e, agentId: owner.id };
   }
@@ -62,6 +62,15 @@ export function reduce(state: OfficeState, e: AgentEvent): OfficeState {
       a.openCalls = [];
       a.pendingDelegations = [];
       delete a.waiting;
+      // The session's background commands die with it.
+      if (!a.parentId) {
+        for (const x of Object.values(agents)) {
+          if (x.sessionId !== a.sessionId || !runningJobs(x, e.ts).length) continue;
+          const jobs = (x.jobs ?? []).map((j) => (j.endedAt === undefined ? { ...j, endedAt: e.ts } : j));
+          if (x === a) a.jobs = jobs;
+          else agents[x.id] = { ...x, jobs };
+        }
+      }
       if (a.parentId) {
         a.lastSaid = {
           kind: "report",
@@ -135,12 +144,19 @@ export function reduce(state: OfficeState, e: AgentEvent): OfficeState {
       break;
     }
     case "job.start": {
-      const job: Job = { callId: e.callId, summary: e.summary, ...(e.label ? { label: e.label } : {}), startedAt: e.ts };
-      a.jobs = keepJobs([...(a.jobs ?? []).filter((j) => j.callId !== e.callId), job], e.ts);
+      const known = a.jobs?.find((j) => j.callId === e.callId);
+      // Sent again with its task id once the call returns: same job, same start.
+      if (known) {
+        if (e.taskId) a.jobs = a.jobs!.map((j) => (j === known ? { ...j, taskId: e.taskId! } : j));
+        break;
+      }
+      const job: Job = { callId: e.callId, ...(e.taskId ? { taskId: e.taskId } : {}), summary: e.summary, ...(e.label ? { label: e.label } : {}), startedAt: e.ts };
+      a.jobs = keepJobs([...(a.jobs ?? []), job], e.ts);
       break;
     }
     case "job.end": {
-      const job = a.jobs?.find((j) => j.callId === e.callId);
+      const end = e;
+      const job = a.jobs?.find((j) => isJob(j, end));
       // Unknown, or already ended (the hook reports finished jobs on every turn end): nothing new.
       if (!job || job.endedAt !== undefined) break;
       a.jobs = keepJobs(a.jobs!.map((j) => (j === job ? { ...j, endedAt: e.ts, ok: e.ok } : j)), e.ts);
@@ -222,6 +238,11 @@ function newAgent(e: AgentEvent, takenNames: ReadonlySet<string>): AgentState {
 /** Background jobs still running at `now`. */
 export function runningJobs(a: Pick<AgentState, "jobs">, now: number): Job[] {
   return (a.jobs ?? []).filter((j) => j.endedAt === undefined && now - j.startedAt < JOB_GIVE_UP_MS);
+}
+
+/** Is this the job a job.end names (by its tool call or by its task id)? */
+function isJob(j: Job, e: { callId?: string | undefined; taskId?: string | undefined }): boolean {
+  return (e.callId !== undefined && j.callId === e.callId) || (e.taskId !== undefined && j.taskId === e.taskId);
 }
 
 /** All running jobs plus the last few finished ones, oldest first. */
