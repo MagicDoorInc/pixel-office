@@ -53,7 +53,7 @@ See [DESIGN.md](DESIGN.md) for how it works.
 ## Quick start
 
 ```sh
-git clone https://github.com/KRSogaard/pixel-office.git
+git clone https://github.com/MagicDoorInc/pixel-office.git
 cd pixel-office
 docker compose up -d                       # or: pnpm install && pnpm start
 docker compose logs pixel-office           # shows the admin token (setup link) + ingest token
@@ -61,7 +61,7 @@ docker compose logs pixel-office           # shows the admin token (setup link) 
 
 1. Open the **setup link** from the log (`…/admin?token=po_a_…`) and, in 👥 People, add yourself
    as an admin. You get your personal token; from now on you log in with your name and it.
-2. In Claude Code run `/plugin marketplace add KRSogaard/pixel-office`, then
+2. In Claude Code run `/plugin marketplace add MagicDoorInc/pixel-office`, then
    `/plugin install pixel-office@pixel-office`, and enter the server URL and your personal token when asked.
 3. Start a Claude Code session — a new person walks into the office.
 
@@ -136,7 +136,7 @@ other machine that can reach it.
    started without `PIXEL_OFFICE_HOST=0.0.0.0`.
 3. **Install the plugin** inside Claude Code:
    ```
-   /plugin marketplace add KRSogaard/pixel-office
+   /plugin marketplace add MagicDoorInc/pixel-office
    /plugin install pixel-office@pixel-office
    ```
 4. **Enter the settings** when Claude Code asks:

@@ -62,7 +62,7 @@ export class PeoplePanel {
           <code>${esc(this.secret.value)}</code>
           <button data-copy="${esc(this.secret.value)}">Copy</button>
           <p class="muted">${esc(this.secret.name)} logs in to the office with their name and this token, and sets up Claude Code:</p>
-          <pre>/plugin marketplace add KRSogaard/pixel-office
+          <pre>/plugin marketplace add MagicDoorInc/pixel-office
 /plugin install pixel-office@pixel-office
 Server URL: ${esc(origin)}
 Ingest token: (the token above)</pre>

@@ -187,7 +187,7 @@ The OpenCode plugin is plain code running inside the OpenCode process: fire-and-
 `.claude-plugin/marketplace.json`:
 
 ```
-/plugin marketplace add KRSogaard/pixel-office
+/plugin marketplace add MagicDoorInc/pixel-office
 /plugin install pixel-office@pixel-office
 ```
 
